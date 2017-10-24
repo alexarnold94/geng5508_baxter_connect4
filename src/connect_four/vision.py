@@ -207,6 +207,7 @@ class ConnectFourVision(object):
                                     '2',
                                     (x_offset + 15, y_offset + 30),
                                     cv2.FONT_HERSHEY_COMPLEX_SMALL,
+									1, (0, 0, 0)
                         )
                         self._grid[row][col] = 2
                         self._user_cnt += 1
@@ -215,7 +216,7 @@ class ConnectFourVision(object):
                                     '1',
                                     (x_offset + 15, y_offset + 30),
                                     cv2.FONT_HERSHEY_COMPLEX_SMALL,
-                                    1,
+                                    1, (0, 0, 0)
                         )
                         self._grid[row][col] = 1
                         self._baxter_cnt += 1
