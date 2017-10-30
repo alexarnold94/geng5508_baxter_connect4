@@ -165,6 +165,7 @@ class ConnectFourVision(object):
                 self._camera.gain = self._gain_slider
             # process red/yellow image
             self._show_image()
+            # chuck my code in here
             self._project_roi()
             self._filter_yellow()
             self._filter_red()
