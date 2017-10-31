@@ -71,6 +71,7 @@ class ConnectFourVision(object):
         self._camera = baxter_interface.CameraController(self._camera_name)
         self._camera.open()
         self._camera.resolution = [1280, 800]
+        self._origin = np.array((710,320))
         self._camera.gain = 25
 
         self.grid = [[0 for _i in range(7)] for _j in range(6)]
@@ -109,7 +110,6 @@ class ConnectFourVision(object):
         self._yellow = np.zeros((300, 300), np.uint8)
         self._red = np.zeros((300, 300), np.uint8)
         self._projected = np.zeros((300, 300, 3), np.uint8)
-        self._origin = np.array((500,400))
 
         self.subLock = threading.Lock()
 
@@ -192,19 +192,19 @@ class ConnectFourVision(object):
         # Convert the image to HSV space and
         hsv = cv2.cvtColor(local_image, cv2.COLOR_BGR2HSV)
 
-        lower_red = np.array([165, 60, 60])
-        upper_red = np.array([180, 255, 255])
+        lower_red = np.array([155, 100, 100])
+        upper_red = np.array([190, 255, 255])
         red = cv2.inRange(hsv, lower_red, upper_red)
         # cv2.imshow('Red', red)
 
-        lower_yellow = np.array([20, 60, 60])
-        upper_yellow = np.array([45, 255, 255])
+        lower_yellow = np.array([10, 40, 40])
+        upper_yellow = np.array([55, 255, 255])
         yellow = cv2.inRange(hsv, lower_yellow, upper_yellow)
         # cv2.imshow('Yellow', yellow)
 
         # Detect game pieces using OpenCV's Hough Circles
-        red_circles = cv2.HoughCircles(red, cv2.HOUGH_GRADIENT, 3.5, 50, maxRadius = 100)
-        yellow_circles = cv2.HoughCircles(yellow, cv2.HOUGH_GRADIENT, 3.5, 50, maxRadius=100)
+        red_circles = cv2.HoughCircles(red, cv2.HOUGH_GRADIENT, 5, 50, maxRadius=30)
+        yellow_circles = cv2.HoughCircles(yellow, cv2.HOUGH_GRADIENT, 5, 50, maxRadius=30)
 
         closest_point = np.array((0, 0))
         best_dist = 1000000
@@ -235,6 +235,8 @@ class ConnectFourVision(object):
                 cv2.circle(local_image, (x, y), r, (0, 0, 255), 3) # for debugging
                 cv2.circle(local_image, (x, y), 2, (0, 0, 255), 2)
 
+        # Show nearest game piece
+        cv2.line(local_image, (self._origin[0], self._origin[1]), (closest_point[0], closest_point[1]), (255,0,255), 2)
         # Display image
         cv2.imshow('Nearest game piece', local_image)
 
