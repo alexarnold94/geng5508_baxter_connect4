@@ -30,6 +30,7 @@
 import argparse
 import numpy as np
 import threading
+import math
 
 from copy import deepcopy
 from os import system
@@ -73,6 +74,7 @@ class ConnectFourVision(object):
         self._camera.resolution = [1280, 800]
         self._origin = np.array((710,320))
         self._camera.gain = 25
+        self._game_piece_diameter = 0.015
 
         self.grid = [[0 for _i in range(7)] for _j in range(6)]
         self.cv_image = None
@@ -206,7 +208,7 @@ class ConnectFourVision(object):
         red_circles = cv2.HoughCircles(red, cv2.HOUGH_GRADIENT, 5, 50, maxRadius=30)
         yellow_circles = cv2.HoughCircles(yellow, cv2.HOUGH_GRADIENT, 5, 50, maxRadius=30)
 
-        closest_point = np.array((0, 0))
+        closest_point = np.array((0, 0, 0))
         best_dist = 1000000
         # Mark Baxter's centre point with a green dot
         cv2.circle(local_image, (self._origin[0], self._origin[1]), 3, (0,255,0), 3) # Centre point
@@ -218,7 +220,7 @@ class ConnectFourVision(object):
             for (x, y, r) in red_circles:
                 dist = np.linalg.norm(self._origin - np.array((x, y)))
                 if dist < best_dist:
-                    closest_point = [x, y]
+                    closest_point = [x, y, r]
                     best_dist = dist
                 cv2.circle(local_image, (x, y), r, (0, 255, 255), 3) # for visualisation
                 cv2.circle(local_image, (x, y), 2, (0, 255, 255), 2)
@@ -230,7 +232,7 @@ class ConnectFourVision(object):
             for (x, y, r) in yellow_circles:
                 dist = np.linalg.norm(self._origin - np.array((x, y)))
                 if dist < best_dist:
-                    closest_point = [x, y]
+                    closest_point = [x, y, r]
                     best_dist = dist
                 cv2.circle(local_image, (x, y), r, (0, 0, 255), 3) # for debugging
                 cv2.circle(local_image, (x, y), 2, (0, 0, 255), 2)
@@ -240,10 +242,34 @@ class ConnectFourVision(object):
         # Display image
         cv2.imshow('Nearest game piece', local_image)
 
-        # Publish relative (x,y) coordinate to pick_place.py
+        """
+        # Calculate the metres per pixel: know the diameter of the game piece,
+        # can calculate the distance (in pixels) to the game piece, therefore
+        # can determine metres (in Baxter space) to pixels ratio
+        #print("x = %f, y = %f, r = %f" % ())
+        m_per_px = math.sqrt(math.pow(closest_point[0], 2) + math.pow(closest_point[1], 2))
+        m_per_px *= 2*closest_point[2]
         state = dict()
-        state['x'] = closest_point[0] - self._origin[0]
-        state['y'] = closest_point[1] - self._origin[1]
+        if m_per_px == 0:
+            state['x'] = 0
+            state['y'] = 0
+        else :
+            m_per_px = self._game_piece_diameter / m_per_px
+            state['x'] = (closest_point[0] - self._origin[0]) * m_per_px
+            state['y'] = (closest_point[1] - self._origin[1]) * m_per_px
+
+        # Publish relative (x,y) coordinate to pick_place.py
+        self._nearest_piece_pub.publish(str(state))
+        """
+
+        ratio = 0
+        if closest_point[0] == 0:
+            ratio = 0
+        else:
+            ratio = self._game_piece_diameter / closest_point[2]
+        state = dict()
+        state['x'] = ratio * closest_point[0]
+        state['y'] = ratio * closest_point[1]
         self._nearest_piece_pub.publish(str(state))
 
     def _process_colors(self, red, yellow):

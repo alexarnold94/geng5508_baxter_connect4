@@ -32,12 +32,14 @@ import collections
 from copy import deepcopy
 
 import rospy
+import math
 
 import tf
+import threading
 import cv2
 import cv_bridge
 import rospkg
-import tf
+import time
 
 from geometry_msgs.msg import (
     PoseStamped,
@@ -74,13 +76,16 @@ class PickPlace(object):
         dash_io = baxter_interface.DigitalIO(limb + '_upper_button')
         circle_io = baxter_interface.DigitalIO(limb + '_lower_button')
 
+        self.subLock = threading.Lock()
         self.pick_location = dict()
         #self.pick_approach = dict()
-		self.tablepick_approach = dict()
-		self.tablepick_location = dict()
-		
+        self.tablepick_approach = dict()
+        self.tablepick_location = dict()
+
 
         self.table_height = 0
+        self.table_height_approach = 0
+        self.camera_height = 0
         self.piece_x = 0
         self.piece_y = 0
 
@@ -109,8 +114,8 @@ class PickPlace(object):
 
         circle_io.state_changed.connect(self._pick)
         dash_io.state_changed.connect(self._place)
-		
-		self._camturn = 0
+
+        self._camturn = 0
 
     def _find_jp(self, pose):
         ikreq = SolvePositionIKRequest()
@@ -133,12 +138,12 @@ class PickPlace(object):
         self._y = data['y']
         self.subLock.release()
 
-    def _find_approach(self, pose, offset_z, offset_x=0, offset_y=0):
+    def _find_approach(self, pose, offset_z, offset_x, offset_y):
         ikreq = SolvePositionIKRequest()
         # Add 5 cm offset in Z direction
         try:
             pose['position'] = Point(x=pose['position'][0] + offset_x,
-                                     y=pose['position'][1] + offset_y, 
+                                     y=pose['position'][1] + offset_y,
                                      z=pose['position'][2] + offset_z
                                      )
         except Exception:
@@ -156,32 +161,59 @@ class PickPlace(object):
         resp = self._iksvc(ikreq)
         return dict(zip(resp.joints[0].name, resp.joints[0].position))
 
+    def _find_pose(self, pose, abs_z, offset_x, offset_y):
+        ikreq = SolvePositionIKRequest()
+        # Add 5 cm offset in Z direction
+        try:
+            pose['position'] = Point(x=pose['position'][0] + offset_x,
+                                     y=pose['position'][1] + offset_y,
+                                     z=abs_z
+                                     )
+        except Exception:
+            pose['position'] = Point(x=pose['position'].x + offset_x,
+                                     y=pose['position'].y + offset_y,
+                                     z=abs_z
+                                     )
+        approach_pose = Pose()
+        approach_pose.position = pose['position']
+        approach_pose.orientation = pose['orientation']
+
+        hdr = Header(stamp=rospy.Time.now(), frame_id='base')
+        pose_req = PoseStamped(header=hdr, pose=approach_pose)
+        ikreq.pose_stamp.append(pose_req)
+        resp = self._iksvc(ikreq)
+        return dict(zip(resp.joints[0].name, resp.joints[0].position))
+
     def _pick(self, value):
-        
+
         if value:
             if len(self.camera_jp) == 0:
                 # Record Camera Location
                 print 'Recording camera position'
                 self.camera_jp = self._limb.joint_angles()
+                self.camera_height = self._limb.endpoint_pose()['position'][2]
             elif len(self.pick_location) == 0:
                 # Record Camera Pick Location
                 self.pick_location = self._limb.joint_angles()
                 #self.pick_approach = self._find_approach(
                 #                         self._limb.endpoint_pose(),
-                #                         0.05)
-                
-				cartesian = self._limb.endpoint_pose()
+                #                         0.05, 0.0, 0.0)
+
+                cartesian = self._limb.endpoint_pose()
                 rot = tf.transformations.euler_from_quaternion(cartesian['orientation']) #Pick location
                 self._camturn = rot[2]
-				print ("yaw = %f" % (self._camturn))
-				
+                print ("yaw = %f" % (self._camturn))
+
             elif self.table_height == 0:
-                self.table_height = self._limb.endpoint_pose()['position'][2]
+                self.table_height = self._limb.endpoint_pose()['position'][2] # - self.camera_height
+                print ("self._limb.endpoint_pose()['position'][2] = %f, self.camera_height = %f, self.table_height = %f" % (self._limb.endpoint_pose()['position'][2], self.camera_height, self.table_height))
+                #print(type(self.table_height))
+                self.table_height_approach = self.table_height + 0.05
                 print 'Recording table height'
                 print 'Table height = %f' % (self.table_height) # TODO remove DEBUG
-                self._gripper.close()
-        		
-		
+                self._gripper.command_position(15.0)
+
+
     def _place(self, value):
         if value:
             if len(self.place_jp) == 0:
@@ -252,18 +284,18 @@ class PickPlace(object):
                     )
                     jp = self._find_jp(deepcopy(move_pose[move]))
                     approach = self._find_approach(deepcopy(move_pose[move]),
-                                                   0.03)
+                                                   0.03, 0.0, 0.0)
                     self.place_jp[move] = jp
                     self.place_approach[move] = approach
                 if self._side == 'right':
                     self.neutral_jp = self._find_approach(
                                           deepcopy(move_pose['seven']),
-                                          0.1
+                                          0.1, 0.0, 0.0
                                       )
                 else:
                     self.neutral_jp = self._find_approach(
                                           deepcopy(move_pose['one']),
-                                          0.1
+                                          0.1, 0.0, 0.0
                                       )
                 filename = self._path + self._side + '_poses.config'
                 self._save_file(filename)
@@ -355,42 +387,46 @@ class PickPlace(object):
     # Modifying this function for piece selection
     def get_piece(self):
 
-	    self._limb.set_joint_position_speed(0.8)
+        self._limb.set_joint_position_speed(0.8)
         self._limb.move_to_joint_positions(self.pick_location,
                                            threshold=0.01745)  # 1 degree
-	    # may need sleep
-		# Get a local copy of the x and y values
+
+        time.sleep(3)# may need sleep
+        # Get a local copy of the x and y values
+
         self.subLock.acquire(True)
         x = self._x
         y = self._y
         self.subLock.release()
-        
+
         # Now use x and y to move around here
         # drawing pick process
 
-		x = x*math.cos(self._camturn) - y*math.sin(self._camturn)
-		y = -1*(x*math.sin(self._camturn) - y*math.cos(self._camturn)
+        x = x*math.cos(self._camturn) - y*math.sin(self._camturn)
+        y = -1*(x*math.sin(self._camturn) - y*math.cos(self._camturn))
 
-		self.tablepick_approach = self._find_approach(
-		                         limb.joint_angles(),
-								 table_height+0.05,
-								 x,
-								 y)
-		self.tablepick_location = self._find_approach(
-		                         limb.joint_angles(),
-								 table_height,
-								 x,
-								 y)	
+        print("table_height_approach = %f, table_height = %f, x = %f, y = %f" % (self.table_height_approach, self.table_height, x, y))
+        self.tablepick_approach = self._find_pose(self._limb.endpoint_pose(), self.table_height_approach, x, y)
+
+        self.tablepick_location = self._find_pose(self._limb.endpoint_pose(), self.table_height, x, y)
 
         self._limb.set_joint_position_speed(0.8)
         self._limb.move_to_joint_positions(self.tablepick_approach,
                                            threshold=0.01745)  # 0.2 degrees
+        print("Gone to self.tablepick_approach")
+
+        self._limb.set_joint_position_speed(0.2)
         self._limb.move_to_joint_positions(self.tablepick_location,
                                            threshold=0.003491)  # 1 degree
-		self._gripper.command_position(0.0)
-		self._limb.move_to_joint_positions(self.pick_location,
+
+        print("Gone to self.tablepick_location")
+        self._gripper.command_position(15.0)
+        self._limb.move_to_joint_positions(self.pick_location,
                                            threshold=0.01745)  # 0.2 degrees
-		
+        print("Gone to self.pick_location")
+
+        #self.move_camera()
+
     def place_piece(self, slot):
         self._limb.set_joint_position_speed(0.8)
         self._limb.move_to_joint_positions(
