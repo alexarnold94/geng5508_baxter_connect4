@@ -203,13 +203,13 @@ class ConnectFourVision(object):
         # cv2.imshow('Yellow', yellow)
 
         # Detect game pieces using OpenCV's Hough Circles
-        red_circles = cv2.HoughCircles(red, cv2.cv.CV_HOUGH_GRADIENT, 3.5, 50, maxRadius = 100)
-        yellow_circles = cv2.HoughCircles(yellow, cv2.cv.CV_HOUGH_GRADIENT, 3.5, 50, maxRadius=100)
+        red_circles = cv2.HoughCircles(red, cv2.HOUGH_GRADIENT, 3.5, 50, maxRadius = 100)
+        yellow_circles = cv2.HoughCircles(yellow, cv2.HOUGH_GRADIENT, 3.5, 50, maxRadius=100)
 
         closest_point = np.array((0, 0))
         best_dist = 1000000
         # Mark Baxter's centre point with a green dot
-        cv2.circle(local_image, (origin[0], origin[1]), 3, (0,255,0), 3) # Centre point
+        cv2.circle(local_image, (self._origin[0], self._origin[1]), 3, (0,255,0), 3) # Centre point
 
         # Calculate the closest red circle
         if red_circles is not None:
