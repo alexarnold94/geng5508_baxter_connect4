@@ -166,6 +166,7 @@ class ConnectFourVision(object):
             # process red/yellow image
             self._show_image()
             # chuck my code in here
+            self._detect_board()
             self._project_roi()
             self._filter_yellow()
             self._filter_red()
@@ -175,6 +176,74 @@ class ConnectFourVision(object):
 #             # publish state
             self._pub_state()
             rospy.sleep(0.1)
+            
+    def _detect_board(self):
+        self.subLock.acquire(True)
+        image = deepcopy(self._np_image)
+        self.subLock.release()
+        
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV) # convert to hsv
+        lower_blue = np.array([110,60,60]) # blue thresholds
+        upper_blue = np.array([130,255,255])
+        _blue = cv2.inRange(hsv, lower_blue, upper_blue) # binary for just blue
+        
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25,25)) # kernel for close operator
+        closed = cv2.morphologyEx(_blue, cv2.MORPH_CLOSE, kernel) # execute close operator
+        kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (25,25)) # kernel for open operator
+        open =  cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel2) # execute open operator
+        
+        contours, hierarchy = cv2.findContours(open, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        
+        i = len(contours)
+        num = 0
+        boardArea = 0
+
+        while (num < i):
+            area = cv2.contourArea(contours[num])
+            if area > boardArea: #picks contour with largest area as board
+                boardArea = area
+                boardIndex = num
+            num = num + 1
+            
+        boardContour = contours[boardIndex] #extract just board contour
+        j = len(boardContour) #number of contour points
+        num= 0
+        topLeft = [1280, 800] #define as extreme values that will definitely be overwritten
+        topRight = [0, 800]
+        bottomLeft = [1280, 0]
+        bottomRight = [0, 0]
+
+        while (num < j): #iterate for each coord in contour
+            point = boardContour[num]
+            point = point[0] #extract list
+            pointX = point[0]
+            #print(pointX)
+            pointY = point[1]
+            #print(pointY)
+    
+            if (pointX > topRight[0] - 2 or pointX > topRight[0] + 2): #top right coord x> y<
+                if (pointY < topRight[1] - 2 or pointY < topRight[1] + 2):
+                    topRight[0] = pointX
+                    topRight[1] = pointY
+            
+            if (pointX < topLeft[0] - 2 or pointX < topLeft[0] + 2): #top left coord x< y<
+                if (pointY < topLeft[1] - 2 or pointY < topLeft[1] + 2):
+                    topLeft[0] = pointX
+                    topLeft[1] = pointY
+    
+            if (pointX < bottomLeft[0] - 2 or pointX < bottomLeft[0] + 2): #bottom left coord x< y>
+                if (pointY > bottomLeft[1] - 2 or pointY > bottomLeft[1] + 2):
+                    bottomLeft[0] = pointX
+                    bottomLeft[1] = pointY
+            
+            if (pointX > bottomRight[0] - 2 or pointX > bottomRight[0] + 2): #bottom right coord x> y>
+                if (pointY > bottomRight[1] - 2 or pointY > bottomRight[1] + 2):
+                    bottomRight[0] = pointX
+                    bottomRight[1] = pointY
+            
+            num = num + 1
+            
+            self._roi_points = [[topLeft[0],topLeft[1]], [topRight[0],topRight[1]], [bottomRight[0],bottomRight[1]], [bottomLeft[0],bottomLeft[1]]]
 
     def _process_colors(self, red, yellow):
         # look down each column building up from bottom
