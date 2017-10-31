@@ -75,7 +75,10 @@ class PickPlace(object):
         circle_io = baxter_interface.DigitalIO(limb + '_lower_button')
 
         self.pick_location = dict()
-        self.pick_approach = dict()
+        #self.pick_approach = dict()
+		self.tablepick_approach = dict()
+		self.tablepick_location = dict()
+		
 
         self.table_height = 0
         self.piece_x = 0
@@ -106,6 +109,8 @@ class PickPlace(object):
 
         circle_io.state_changed.connect(self._pick)
         dash_io.state_changed.connect(self._place)
+		
+		self._camturn = 0
 
     def _find_jp(self, pose):
         ikreq = SolvePositionIKRequest()
@@ -128,18 +133,18 @@ class PickPlace(object):
         self._y = data['y']
         self.subLock.release()
 
-    def _find_approach(self, pose, offset):
+    def _find_approach(self, pose, offset_z, offset_x=0, offset_y=0):
         ikreq = SolvePositionIKRequest()
         # Add 5 cm offset in Z direction
         try:
-            pose['position'] = Point(x=pose['position'][0],
-                                     y=pose['position'][1],
-                                     z=pose['position'][2] + offset
+            pose['position'] = Point(x=pose['position'][0] + offset_x,
+                                     y=pose['position'][1] + offset_y, 
+                                     z=pose['position'][2] + offset_z
                                      )
         except Exception:
-            pose['position'] = Point(x=pose['position'].x,
-                                     y=pose['position'].y,
-                                     z=pose['position'].z + offset
+            pose['position'] = Point(x=pose['position'].x + offset_x,
+                                     y=pose['position'].y + offset_y,
+                                     z=pose['position'].z + offset_z
                                      )
         approach_pose = Pose()
         approach_pose.position = pose['position']
@@ -152,37 +157,31 @@ class PickPlace(object):
         return dict(zip(resp.joints[0].name, resp.joints[0].position))
 
     def _pick(self, value):
-        """
+        
         if value:
             if len(self.camera_jp) == 0:
                 # Record Camera Location
                 print 'Recording camera position'
                 self.camera_jp = self._limb.joint_angles()
-            elif len(self.pick_approach) == 0:
-                # Record Pick Location
+            elif len(self.pick_location) == 0:
+                # Record Camera Pick Location
                 self.pick_location = self._limb.joint_angles()
-                self.pick_approach = self._find_approach(
-                                         self._limb.endpoint_pose(),
-                                         0.05)
+                #self.pick_approach = self._find_approach(
+                #                         self._limb.endpoint_pose(),
+                #                         0.05)
+                
+				cartesian = self._limb.endpoint_pose()
+                rot = tf.transformations.euler_from_quaternion(cartesian['orientation']) #Pick location
+                self._camturn = rot[2]
+				print ("yaw = %f" % (self._camturn))
+				
             elif self.table_height == 0:
                 self.table_height = self._limb.endpoint_pose()['position'][2]
                 print 'Recording table height'
                 print 'Table height = %f' % (self.table_height) # TODO remove DEBUG
                 self._gripper.close()
-        """
-        # Get a local copy of the x and y values
-        self.subLock.acquire(True)
-        x = self._x
-        y = self._y
-        self.subLock.release()
-
-        # Now use x and y to move around here
-
-        cartesian = self._limb.endpoint_pose()
-        rot = tf.transformations.euler_from_quaternion(cartesian['orientation'])
-        print ("roll = %f, pitch = %f, yaw = %f" % (rot[0], rot[1], rot[2]))
-        print ("\tx = %f, y = %f, z = %f" % (cartesian['position'][0], cartesian['position'][1], cartesian['position'][2]))
-
+        		
+		
     def _place(self, value):
         if value:
             if len(self.place_jp) == 0:
@@ -294,7 +293,7 @@ class PickPlace(object):
         f = open(file, 'w')
         f.write('camera=' + str(self.camera_jp) + '\n')
         f.write('pick=' + str(self.pick_location) + '\n')
-        f.write('pick_approach=' + str(self.pick_approach) + '\n')
+        #f.write('pick_approach=' + str(self.pick_approach) + '\n')
         f.write('neutral=' + str(self.neutral_jp) + '\n')
         for prefix in self._slots:
             f.write(prefix + '_place=' + str(self.place_jp[prefix]) + '\n')
@@ -355,26 +354,43 @@ class PickPlace(object):
 
     # Modifying this function for piece selection
     def get_piece(self):
-        """
-        self._limb.set_joint_position_speed(0.8)
-        self._limb.move_to_joint_positions(self.pick_approach,
-                                           threshold=0.01745)  # 1 degree
-        self._limb.set_joint_position_speed(0.8)
+
+	    self._limb.set_joint_position_speed(0.8)
         self._limb.move_to_joint_positions(self.pick_location,
-                                           threshold=0.003491)  # 0.2 degrees
-        self._gripper.command_position(0.0)
-        self._limb.move_to_joint_positions(self.pick_approach,
                                            threshold=0.01745)  # 1 degree
-        """
-        nearest_piece_dist, nearest_piece_angle = self.get_nearest_piece()
-        print ("Distance to nearest piece = %d, angle to nearest piece = %d" %
-                nearest_piece_dist, nearest_piece_angle)
+	    # may need sleep
+		# Get a local copy of the x and y values
+        self.subLock.acquire(True)
+        x = self._x
+        y = self._y
+        self.subLock.release()
+        
+        # Now use x and y to move around here
+        # drawing pick process
 
+		x = x*math.cos(self._camturn) - y*math.sin(self._camturn)
+		y = -1*(x*math.sin(self._camturn) - y*math.cos(self._camturn)
 
-    def get_nearest_piece(self):
-            return 0, 0
+		self.tablepick_approach = self._find_approach(
+		                         limb.joint_angles(),
+								 table_height+0.05,
+								 x,
+								 y)
+		self.tablepick_location = self._find_approach(
+		                         limb.joint_angles(),
+								 table_height,
+								 x,
+								 y)	
 
-
+        self._limb.set_joint_position_speed(0.8)
+        self._limb.move_to_joint_positions(self.tablepick_approach,
+                                           threshold=0.01745)  # 0.2 degrees
+        self._limb.move_to_joint_positions(self.tablepick_location,
+                                           threshold=0.003491)  # 1 degree
+		self._gripper.command_position(0.0)
+		self._limb.move_to_joint_positions(self.pick_location,
+                                           threshold=0.01745)  # 0.2 degrees
+		
     def place_piece(self, slot):
         self._limb.set_joint_position_speed(0.8)
         self._limb.move_to_joint_positions(
