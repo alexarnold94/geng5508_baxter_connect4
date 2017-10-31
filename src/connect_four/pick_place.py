@@ -47,6 +47,7 @@ from geometry_msgs.msg import (
 )
 
 from std_msgs.msg import Header
+from std_msgs.msg import String
 
 from sensor_msgs.msg import (
     Image,
@@ -76,6 +77,10 @@ class PickPlace(object):
         self.pick_location = dict()
         self.pick_approach = dict()
 
+        self.table_height = 0
+        self.piece_x = 0
+        self.piece_y = 0
+
         self.place_jp = dict()
         self.camera_jp = dict()
         self.neutral_jp = dict()
@@ -88,6 +93,12 @@ class PickPlace(object):
 
         self._gripper.calibrate()
         self._gripper.set_holding_force(100.0)
+
+        nearest_piece_topic = 'vision/connect_four_piece'
+        self._nearest_piece_sub = rospy.Subscriber(
+            nearest_piece_topic,
+            String,
+            self._on_game_piece)
 
         ik_srv = "ExternalTools/" + limb + "/PositionKinematicsNode/IKService"
         self._iksvc = rospy.ServiceProxy(ik_srv, SolvePositionIK)
@@ -108,6 +119,14 @@ class PickPlace(object):
         ikreq.pose_stamp.append(pose_req)
         resp = self._iksvc(ikreq)
         return dict(zip(resp.joints[0].name, resp.joints[0].position))
+
+    def _on_game_piece(self, msg):
+        # Update (x,y) values of the nearest game piece
+        data = eval(msg.data)
+        self.subLock.acquire(True)
+        self._x = data['x']
+        self._y = data['y']
+        self.subLock.release()
 
     def _find_approach(self, pose, offset):
         ikreq = SolvePositionIKRequest()
@@ -133,6 +152,7 @@ class PickPlace(object):
         return dict(zip(resp.joints[0].name, resp.joints[0].position))
 
     def _pick(self, value):
+        """
         if value:
             if len(self.camera_jp) == 0:
                 # Record Camera Location
@@ -140,12 +160,28 @@ class PickPlace(object):
                 self.camera_jp = self._limb.joint_angles()
             elif len(self.pick_approach) == 0:
                 # Record Pick Location
-                print 'Recording pick location'
                 self.pick_location = self._limb.joint_angles()
                 self.pick_approach = self._find_approach(
                                          self._limb.endpoint_pose(),
                                          0.05)
+            elif self.table_height == 0:
+                self.table_height = self._limb.endpoint_pose()['position'][2]
+                print 'Recording table height'
+                print 'Table height = %f' % (self.table_height) # TODO remove DEBUG
                 self._gripper.close()
+        """
+        # Get a local copy of the x and y values
+        self.subLock.acquire(True)
+        x = self._x
+        y = self._y
+        self.subLock.release()
+
+        # Now use x and y to move around here
+
+        cartesian = self._limb.endpoint_pose()
+        rot = tf.transformations.euler_from_quaternion(cartesian['orientation'])
+        print ("roll = %f, pitch = %f, yaw = %f" % (rot[0], rot[1], rot[2]))
+        print ("\tx = %f, y = %f, z = %f" % (cartesian['position'][0], cartesian['position'][1], cartesian['position'][2]))
 
     def _place(self, value):
         if value:
@@ -285,9 +321,16 @@ class PickPlace(object):
                     rospy.sleep(0.1)
                 print ("Nice choice!")
 
-                print ("Move Gripper into pick location - press Circle button "
-                       " to grasp piece")
+                print ("Move Gripper into a location allowing the camera to "
+                       "see the pieces - press Circle button to confirm")
                 while(len(self.pick_location) == 0 and
+                      not rospy.is_shutdown()):
+                    rospy.sleep(0.1)
+                print ("Great!")
+
+                print ("Move Gripper down over one of the game pieces - press "
+                       "Circle button to grasp piece")
+                while(self.table_height == 0 and
                       not rospy.is_shutdown()):
                     rospy.sleep(0.1)
                 print ("Cool - Got it!")
@@ -296,13 +339,13 @@ class PickPlace(object):
                        "button to record")
                 while(len(self.place_jp) == 0 and not rospy.is_shutdown()):
                     rospy.sleep(0.1)
-                print ("Awesome Got the Left Spot!\n\n")
+                print ("Awesome! Got the Left Spot\n\n")
 
                 print ("Move Gripper into right most drop slot - press Dash "
                        "button to record")
                 while(len(self.place_jp) != 7 and not rospy.is_shutdown()):
                     rospy.sleep(0.5)
-                print ("Awesome Got the Right Spot!\n\n")
+                print ("Awesome! Got the Right Spot\n\n")
                 good_input = True
 
     def move_neutral(self):
@@ -310,7 +353,9 @@ class PickPlace(object):
         self._limb.move_to_joint_positions(self.neutral_jp,
                                            threshold=0.08727)  # 5 degrees
 
+    # Modifying this function for piece selection
     def get_piece(self):
+        """
         self._limb.set_joint_position_speed(0.8)
         self._limb.move_to_joint_positions(self.pick_approach,
                                            threshold=0.01745)  # 1 degree
@@ -320,6 +365,15 @@ class PickPlace(object):
         self._gripper.command_position(0.0)
         self._limb.move_to_joint_positions(self.pick_approach,
                                            threshold=0.01745)  # 1 degree
+        """
+        nearest_piece_dist, nearest_piece_angle = self.get_nearest_piece()
+        print ("Distance to nearest piece = %d, angle to nearest piece = %d" %
+                nearest_piece_dist, nearest_piece_angle)
+
+
+    def get_nearest_piece(self):
+            return 0, 0
+
 
     def place_piece(self, slot):
         self._limb.set_joint_position_speed(0.8)

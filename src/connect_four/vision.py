@@ -109,6 +109,7 @@ class ConnectFourVision(object):
         self._yellow = np.zeros((300, 300), np.uint8)
         self._red = np.zeros((300, 300), np.uint8)
         self._projected = np.zeros((300, 300, 3), np.uint8)
+        self._origin = np.array((500,400))
 
         self.subLock = threading.Lock()
 
@@ -127,6 +128,11 @@ class ConnectFourVision(object):
         board_state_topic = '/vision/connect_four_state'
         self._board_state_pub = rospy.Publisher(
             board_state_topic,
+            String, queue_size=10)
+
+        nearest_piece_topic = 'vision/connect_four_piece'
+        self._nearest_piece_pub = rospy.Publisher(
+            nearest_piece_topic,
             String, queue_size=10)
 
         print 'All set! Starting to process images!'
@@ -170,9 +176,73 @@ class ConnectFourVision(object):
             self._process_colors(deepcopy(self._red), deepcopy(self._yellow))
             self._update_image_grid()
 
-#             # publish state
+            # publish state
             self._pub_state()
+
+            # find nearest game piece
+            self._nearest_piece()
             rospy.sleep(0.1)
+
+    def _nearest_piece(self):
+        # Get local copy of camera image
+        self.subLock.acquire(True)
+        local_image = deepcopy(self._np_image)
+        self.subLock.release()
+
+        # Convert the image to HSV space and
+        hsv = cv2.cvtColor(local_image, cv2.COLOR_BGR2HSV)
+
+        lower_red = np.array([165, 60, 60])
+        upper_red = np.array([180, 255, 255])
+        red = cv2.inRange(hsv, lower_red, upper_red)
+        # cv2.imshow('Red', red)
+
+        lower_yellow = np.array([20, 60, 60])
+        upper_yellow = np.array([45, 255, 255])
+        yellow = cv2.inRange(hsv, lower_yellow, upper_yellow)
+        # cv2.imshow('Yellow', yellow)
+
+        # Detect game pieces using OpenCV's Hough Circles
+        red_circles = cv2.HoughCircles(red, cv2.cv.CV_HOUGH_GRADIENT, 3.5, 50, maxRadius = 100)
+        yellow_circles = cv2.HoughCircles(yellow, cv2.cv.CV_HOUGH_GRADIENT, 3.5, 50, maxRadius=100)
+
+        closest_point = np.array((0, 0))
+        best_dist = 1000000
+        # Mark Baxter's centre point with a green dot
+        cv2.circle(local_image, (origin[0], origin[1]), 3, (0,255,0), 3) # Centre point
+
+        # Calculate the closest red circle
+        if red_circles is not None:
+            red_circles = np.round(red_circles[0,:]).astype("int")
+
+            for (x, y, r) in red_circles:
+                dist = np.linalg.norm(self._origin - np.array((x, y)))
+                if dist < best_dist:
+                    closest_point = [x, y]
+                    best_dist = dist
+                cv2.circle(local_image, (x, y), r, (0, 255, 255), 3) # for visualisation
+                cv2.circle(local_image, (x, y), 2, (0, 255, 255), 2)
+
+        # Calculate the closest yellow circle
+        if yellow_circles is not None:
+            yellow_circles = np.round(yellow_circles[0,:]).astype("int")
+
+            for (x, y, r) in yellow_circles:
+                dist = np.linalg.norm(self._origin - np.array((x, y)))
+                if dist < best_dist:
+                    closest_point = [x, y]
+                    best_dist = dist
+                cv2.circle(local_image, (x, y), r, (0, 0, 255), 3) # for debugging
+                cv2.circle(local_image, (x, y), 2, (0, 0, 255), 2)
+
+        # Display image
+        cv2.imshow('Nearest game piece', local_image)
+
+        # Publish relative (x,y) coordinate to pick_place.py
+        state = dict()
+        state['x'] = closest_point[0] - self._origin[0]
+        state['y'] = closest_point[1] - self._origin[1]
+        self._nearest_piece_pub.publish(str(state))
 
     def _process_colors(self, red, yellow):
         # look down each column building up from bottom
