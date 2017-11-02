@@ -402,8 +402,10 @@ class PickPlace(object):
         # Now use x and y to move around here
         # drawing pick process
 
-        x = x*math.cos(self._camturn) - y*math.sin(self._camturn)
-        y = -1*(x*math.sin(self._camturn) - y*math.cos(self._camturn))
+        x = 5*(x*math.cos(self._camturn) - y*math.sin(self._camturn))
+        y = -5*(x*math.sin(self._camturn) - y*math.cos(self._camturn))
+        # x = x*math.cos(self._camturn)
+        # y = 0.1
 
         print("table_height_approach = %f, table_height = %f, x = %f, y = %f" % (self.table_height_approach, self.table_height, x, y))
         self.tablepick_approach = self._find_pose(self._limb.endpoint_pose(), self.table_height_approach, x, y)

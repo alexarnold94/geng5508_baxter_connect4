@@ -73,7 +73,7 @@ class ConnectFourVision(object):
         self._camera.open()
         self._camera.resolution = [1280, 800]
         self._origin = np.array((710,320))
-        self._camera.gain = 25
+        self._camera.gain = 20
         self._game_piece_diameter = 0.015
 
         self.grid = [[0 for _i in range(7)] for _j in range(6)]
@@ -91,7 +91,7 @@ class ConnectFourVision(object):
         self._roi_points = [[100, 100], [200, 100], [200, 200], [100, 200]]
         self._roi_move = False
         self._point_selected = -1
-        self._gain_slider = 25
+        self._gain_slider = 20
         self._red_thresh = 100
         self._yellow_thresh = 100
         self._slider_time = rospy.Time.now()
@@ -205,8 +205,8 @@ class ConnectFourVision(object):
         # cv2.imshow('Yellow', yellow)
 
         # Detect game pieces using OpenCV's Hough Circles
-        red_circles = cv2.HoughCircles(red, cv2.HOUGH_GRADIENT, 5, 50, maxRadius=30)
-        yellow_circles = cv2.HoughCircles(yellow, cv2.HOUGH_GRADIENT, 5, 50, maxRadius=30)
+        red_circles = cv2.HoughCircles(red, cv2.HOUGH_GRADIENT, 5, 100, minRadius=20, maxRadius=40)
+        yellow_circles = cv2.HoughCircles(yellow, cv2.HOUGH_GRADIENT, 5, 100, minRadius=20, maxRadius=40)
 
         closest_point = np.array((0, 0, 0))
         best_dist = 1000000
@@ -268,8 +268,8 @@ class ConnectFourVision(object):
         else:
             ratio = self._game_piece_diameter / closest_point[2]
         state = dict()
-        state['x'] = ratio * closest_point[0]
-        state['y'] = ratio * closest_point[1]
+        state['x'] = ratio * (closest_point[0] - self._origin[0])
+        state['y'] = ratio * (closest_point[1] - self._origin[1])
         self._nearest_piece_pub.publish(str(state))
 
     def _process_colors(self, red, yellow):

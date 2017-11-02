@@ -164,7 +164,7 @@ class ConnectFour(object):
                 self._manipulate.get_piece()
             self._manipulate.move_neutral()
             self._manipulate.place_piece(move)
-            #self._manipulate.move_neutral()
+            self._manipulate.move_neutral()
             self._manipulate.move_camera()
             self._manipulate.get_piece()
             self._manipulate.move_camera()
