@@ -145,7 +145,7 @@ class PickPlace(object):
                 self.pick_approach = self._find_approach(
                                          self._limb.endpoint_pose(),
                                          0.05)
-                self._gripper.command_position(20.0, block=True)
+                self._gripper.command_position(15.0)
 
     def _place(self, value):
         if value:
@@ -317,7 +317,7 @@ class PickPlace(object):
         self._limb.set_joint_position_speed(0.8)
         self._limb.move_to_joint_positions(self.pick_location,
                                            threshold=0.003491)  # 0.2 degrees
-        self._gripper.command_position(20.0)
+        self._gripper.command_position(15.0)
         self._limb.move_to_joint_positions(self.pick_approach,
                                            threshold=0.01745)  # 1 degree
 
