@@ -81,7 +81,7 @@ class ConnectFour(object):
         self._manipulate.move_neutral()
         self._manipulate.move_camera()
 
-        raw_input("Please validate ROI for vision - Press enter when complete")
+        #raw_input("Please validate ROI for vision - Press enter when complete")
 
         self._get_name()
 

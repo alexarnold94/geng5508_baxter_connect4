@@ -415,17 +415,14 @@ class PickPlace(object):
         self._limb.set_joint_position_speed(0.8)
         self._limb.move_to_joint_positions(self.tablepick_approach,
                                            threshold=0.01745)  # 0.2 degrees
-        print("Gone to self.tablepick_approach")
 
         self._limb.set_joint_position_speed(0.2)
         self._limb.move_to_joint_positions(self.tablepick_location,
                                            threshold=0.003491)  # 1 degree
 
-        print("Gone to self.tablepick_location")
         self._gripper.command_position(15.0)
         self._limb.move_to_joint_positions(self.pick_location,
                                            threshold=0.01745)  # 0.2 degrees
-        print("Gone to self.pick_location")
 
         #self.move_camera()
 
