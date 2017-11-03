@@ -72,6 +72,7 @@ class ConnectFourVision(object):
         self._camera = baxter_interface.CameraController(self._camera_name)
         self._camera.open()
         self._camera.resolution = [1280, 800]
+        # HAL9001: Added camera origin and adjusted gain
         self._origin = np.array((710,320))
         self._camera.gain = 20
         self._game_piece_diameter = 0.015
@@ -132,6 +133,7 @@ class ConnectFourVision(object):
             board_state_topic,
             String, queue_size=10)
 
+        # HAL9001: Added topic publisher for updating the game piece location
         nearest_piece_topic = 'vision/connect_four_piece'
         self._nearest_piece_pub = rospy.Publisher(
             nearest_piece_topic,
@@ -172,7 +174,7 @@ class ConnectFourVision(object):
                 self._camera.gain = self._gain_slider
             # process red/yellow image
             self._show_image()
-            # chuck my code in here
+            # HAL9001: Call board detection
             self._detect_board()
             self._project_roi()
             self._filter_yellow()
@@ -183,10 +185,11 @@ class ConnectFourVision(object):
             # publish state
             self._pub_state()
 
-            # find nearest game piece
+            # HAL9001: Find nearest game piece
             self._nearest_piece()
             rospy.sleep(0.1)
 
+    # HAL9001: Get the relative (x,y) coordinate in Baxter space of the nearest game piece
     def _nearest_piece(self):
         # Get local copy of camera image
         self.subLock.acquire(True)
@@ -254,6 +257,7 @@ class ConnectFourVision(object):
         state['y'] = ratio * (closest_point[1] - self._origin[1])
         self._nearest_piece_pub.publish(str(state))
 
+    # HAL9001: For an image of the board, detect the four corners for the ROI
     def _detect_board(self):
         self.subLock.acquire(True)
         image = deepcopy(self._np_image)

@@ -81,6 +81,7 @@ class ConnectFour(object):
         self._manipulate.move_neutral()
         self._manipulate.move_camera()
 
+        # HAL9001: Removed the ROI validation
         #raw_input("Please validate ROI for vision - Press enter when complete")
 
         self._get_name()
@@ -165,6 +166,7 @@ class ConnectFour(object):
             self._manipulate.move_neutral()
             self._manipulate.place_piece(move)
             self._manipulate.move_neutral()
+            # HAL9001: Added an extra camera movement to avoid collisions
             self._manipulate.move_camera()
             self._manipulate.get_piece()
             self._manipulate.move_camera()

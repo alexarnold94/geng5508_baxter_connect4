@@ -76,6 +76,7 @@ class PickPlace(object):
         dash_io = baxter_interface.DigitalIO(limb + '_upper_button')
         circle_io = baxter_interface.DigitalIO(limb + '_lower_button')
 
+        # HAL9001: Added extra approaches/locations for auto-detection
         self.subLock = threading.Lock()
         self.pick_location = dict()
         #self.pick_approach = dict()
@@ -102,6 +103,7 @@ class PickPlace(object):
         self._gripper.calibrate()
         self._gripper.set_holding_force(100.0)
 
+        # HAL9001: Added a Subscriber to listen for nearest game piece updates
         nearest_piece_topic = 'vision/connect_four_piece'
         self._nearest_piece_sub = rospy.Subscriber(
             nearest_piece_topic,
@@ -131,7 +133,7 @@ class PickPlace(object):
         return dict(zip(resp.joints[0].name, resp.joints[0].position))
 
     def _on_game_piece(self, msg):
-        # Update (x,y) values of the nearest game piece
+        # HAL9001: Update (x,y) values of the nearest game piece
         data = eval(msg.data)
         self.subLock.acquire(True)
         self._x = data['x']
@@ -161,6 +163,7 @@ class PickPlace(object):
         resp = self._iksvc(ikreq)
         return dict(zip(resp.joints[0].name, resp.joints[0].position))
 
+    # HAL9001: Created pose-finding function for auto-detection calculations
     def _find_pose(self, pose, abs_z, offset_x, offset_y):
         ikreq = SolvePositionIKRequest()
         # Add 5 cm offset in Z direction
@@ -195,16 +198,14 @@ class PickPlace(object):
             elif len(self.pick_location) == 0:
                 # Record Camera Pick Location
                 self.pick_location = self._limb.joint_angles()
-                #self.pick_approach = self._find_approach(
-                #                         self._limb.endpoint_pose(),
-                #                         0.05, 0.0, 0.0)
-
+                # HAL9001: Added code to record camera yaw angle
                 cartesian = self._limb.endpoint_pose()
                 rot = tf.transformations.euler_from_quaternion(cartesian['orientation']) #Pick location
                 self._camturn = rot[2]
                 print ("yaw = %f" % (self._camturn))
 
             elif self.table_height == 0:
+                # HAL9001: Added code to record table height in Baxter coordinates
                 self.table_height = self._limb.endpoint_pose()['position'][2] # - self.camera_height
                 print ("self._limb.endpoint_pose()['position'][2] = %f, self.camera_height = %f, self.table_height = %f" % (self._limb.endpoint_pose()['position'][2], self.camera_height, self.table_height))
                 #print(type(self.table_height))
@@ -333,6 +334,7 @@ class PickPlace(object):
                     str(self.place_approach[prefix]) + '\n')
         f.close()
 
+    # HAL9001: Added dialogue for extra postions
     def get_locations(self):
         good_input = False
         while not good_input:
@@ -392,20 +394,14 @@ class PickPlace(object):
                                            threshold=0.01745)  # 1 degree
 
         time.sleep(3)# may need sleep
-        # Get a local copy of the x and y values
 
         self.subLock.acquire(True)
         x = self._x
         y = self._y
         self.subLock.release()
 
-        # Now use x and y to move around here
-        # drawing pick process
-
-        x = 5*(x*math.cos(self._camturn) - y*math.sin(self._camturn))
-        y = -5*(x*math.sin(self._camturn) - y*math.cos(self._camturn))
-        # x = x*math.cos(self._camturn)
-        # y = 0.1
+        x = (x*math.cos(self._camturn) - y*math.sin(self._camturn))
+        y = -1*(x*math.sin(self._camturn) - y*math.cos(self._camturn))
 
         print("table_height_approach = %f, table_height = %f, x = %f, y = %f" % (self.table_height_approach, self.table_height, x, y))
         self.tablepick_approach = self._find_pose(self._limb.endpoint_pose(), self.table_height_approach, x, y)
@@ -424,7 +420,6 @@ class PickPlace(object):
         self._limb.move_to_joint_positions(self.pick_location,
                                            threshold=0.01745)  # 0.2 degrees
 
-        #self.move_camera()
 
     def place_piece(self, slot):
         self._limb.set_joint_position_speed(0.8)
